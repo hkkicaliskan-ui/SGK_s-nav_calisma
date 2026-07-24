@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flashcard Pro - Excel Dosya Yüklemeli</title>
+  <!-- Excel Dosyalarını Okumak İçin SheetJS Kütüphanesi -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    :root {
+      --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+      --card-bg: #1e293b;
+      --card-border: #334155;
+      --primary: #6366f1;
+      --primary-hover: #4f46e5;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    body { background: var(--bg-gradient); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
+    
+    .container { width: 100%; max-width: 650px; display: flex; flex-direction: column; gap: 20px; }
+
+    /* Header & Progress */
+    header { text-align: center; display: flex; flex-direction: column; gap: 10px; }
+    h1 { font-size: 2rem; background: linear-gradient(to right, #818cf8, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    
+    .progress-bar-container { background: rgba(255,255,255,0.1); border-radius: 20px; height: 10px; width: 100%; overflow: hidden; }
+    .progress-bar { background: linear-gradient(to right, var(--primary), var(--success)); height: 100%; width: 0%; transition: width 0.3s ease; }
+
+    .stats { display: flex; justify-content: space-between; font-size: 0.9rem; color: var(--text-muted); }
+
+    /* 3D Card Scene */
+    .scene { width: 100%; height: 320px; perspective: 1000px; cursor: pointer; }
+    .card { width: 100%; height: 100%; position: relative; transform-style: preserve-3d; transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1); }
+    .card.is-flipped { transform: rotateY(180deg); }
+
+    .card-face {
+      position: absolute; width: 100%; height: 100%; backface-visibility: hidden;
+      border-radius: 20px; border: 1px solid var(--card-border); background: var(--card-bg);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 30px; text-align: center; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.3);
+    }
+    
+    .card-front { color: var(--text); }
+    .card-back { transform: rotateY(180deg); background: #0f172a; border-color: var(--primary); }
+
+    .badge { position: absolute; top: 15px; left: 20px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); }
+    .card-text { font-size: 1.4rem; font-weight: 500; line-height: 1.6; }
+
+    /* Action Controls */
+    .controls { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    button, .file-label {
+      border: none; outline: none; padding: 12px 20px; border-radius: 12px;
+      font-weight: 600; cursor: pointer; transition: all 0.2s ease;
+      display: flex; align-items: center; gap: 8px; color: white; background: rgba(255,255,255,0.08);
+      font-size: 0.9rem;
+    }
+    button:hover, .file-label:hover { transform: translateY(-2px); background: rgba(255,255,255,0.15); }
+    button:active, .file-label:active { transform: translateY(0); }
+
+    .btn-success { background: var(--success); }
+    .btn-success:hover { background: #059669; }
+    .btn-warning { background: var(--warning); color: #0f172a; }
+    .btn-warning:hover { background: #d97706; }
+    .btn-primary { background: var(--primary); }
+    .btn-primary:hover { background: var(--primary-hover); }
+
+    /* Hidden File Input */
+    input[type="file"] { display: none; }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <header>
+      <h1>Flashcard Pro</h1>
+      <div class="progress-bar-container">
+        <div class="progress-bar" id="progress"></div>
+      </div>
+      <div class="stats">
+        <span id="card-counter">Kart: 0 / 0</span>
+        <span id="mastered-counter">Öğrenilen: 0</span>
+      </div>
+    </header>
+
+    <!-- Flashcard -->
+    <div class="scene" id="scene">
+      <div class="card" id="card">
+        <div class="card-face card-front">
+          <span class="badge">Soru / Ön Yüz</span>
+          <div class="card-text" id="front-text">Lütfen bir Excel dosyası seçin...</div>
+        </div>
+        <div class="card-face card-back">
+          <span class="badge">Cevap / Arka Yüz</span>
+          <div class="card-text" id="back-text">...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Actions -->
+    <div class="controls">
+      <button class="btn-warning" onclick="markReview()">🔄 Tekrar Et</button>
+      <button class="btn-success" onclick="markMastered()">✅ Öğrendim</button>
+    </div>
+
+    <!-- Navigation & Excel File Input -->
+    <div class="controls">
+      <button onclick="prevCard()">⬅️ Önceki</button>
+      <button onclick="shuffleDeck()">🔀 Karıştır</button>
+      <button onclick="nextCard()">Sonraki ➡️</button>
+      
+      <!-- Excel File Select Button -->
+      <label for="excel-file" class="file-label btn-primary">
+        📁 Excel Dosyası Seç (.xlsx)
+      </label>
+      <input type="file" id="excel-file" accept=".xlsx, .xls, .csv" onchange="handleFileSelect(event)">
+    </div>
+  </div>
+
+  <script>
+    let deck = [
+      { front: "Excel Dosyası Seç butonuna tıklayın", back: "Bilgisayarınızdaki .xlsx veya .xls dosyasını seçerek doğrudan yükleyebilirsiniz." }
+    ];
+
+    let currentIndex = 0;
+    let masteredCount = 0;
+
+    const cardEl = document.getElementById('card');
+    const sceneEl = document.getElementById('scene');
+    const frontTextEl = document.getElementById('front-text');
+    const backTextEl = document.getElementById('back-text');
+    const counterEl = document.getElementById('card-counter');
+    const masteredEl = document.getElementById('mastered-counter');
+    const progressEl = document.getElementById('progress');
+
+    // Flip Card
+    sceneEl.addEventListener('click', () => {
+      cardEl.classList.toggle('is-flipped');
+    });
+
+    function updateUI() {
+      if (deck.length === 0) {
+        frontTextEl.textContent = "Deste boş. Lütfen geçerli bir Excel dosyası seçin!";
+        backTextEl.textContent = "Deste boş.";
+        counterEl.textContent = "Kart: 0 / 0";
+        return;
+      }
+
+      cardEl.classList.remove('is-flipped');
+      setTimeout(() => {
+        frontTextEl.textContent = deck[currentIndex].front;
+        backTextEl.textContent = deck[currentIndex].back;
+        counterEl.textContent = `Kart: ${currentIndex + 1} / ${deck.length}`;
+        masteredEl.textContent = `Öğrenilen: ${masteredCount}`;
+        progressEl.style.width = `${(masteredCount / deck.length) * 100}%`;
+      }, 150);
+    }
+
+    function nextCard() {
+      if (deck.length === 0) return;
+      currentIndex = (currentIndex + 1) % deck.length;
+      updateUI();
+    }
+
+    function prevCard() {
+      if (deck.length === 0) return;
+      currentIndex = (currentIndex - 1 + deck.length) % deck.length;
+      updateUI();
+    }
+
+    function markMastered() {
+      if (deck.length === 0) return;
+      masteredCount = Math.min(masteredCount + 1, deck.length);
+      nextCard();
+    }
+
+    function markReview() {
+      nextCard();
+    }
+
+    function shuffleDeck() {
+      deck.sort(() => Math.random() - 0.5);
+      currentIndex = 0;
+      updateUI();
+    }
+
+    // Direct Excel (.xlsx) Parser
+    function handleFileSelect(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+
+      reader.onload = function(e) {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+
+        // İlk Çalışma Sayfasını Al
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+
+        // Sayfayı Diziye Dönüştür
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+        const newDeck = [];
+
+        jsonData.forEach(row => {
+          // A ve B sütunlarında veri varsa kart olarak ekle
+          if (row.length >= 2 && row[0] && row[1]) {
+            newDeck.push({
+              front: String(row[0]).trim(),
+              back: String(row[1]).trim()
+            });
+          }
+        });
+
+        if (newDeck.length > 0) {
+          deck = newDeck;
+          currentIndex = 0;
+          masteredCount = 0;
+          updateUI();
+          alert(`${newDeck.length} adet kart başarıyla Excel'den yüklendi!`);
+        } else {
+          alert("Seçilen Excel dosyasında geçerli veri bulunamadı. Lütfen A sütununda soru, B sütununda cevap olduğundan emin olun.");
+        }
+      };
+
+      reader.readAsArrayBuffer(file);
+    }
+
+    // Initialize
+    updateUI();
+  </script>
+</body>
+</html>
