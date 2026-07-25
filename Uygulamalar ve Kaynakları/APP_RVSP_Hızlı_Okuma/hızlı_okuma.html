@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hızlı Okuma Uygulaması</title>
+    <!-- Word ve Excel dosyalarını okumak için kütüphaneler -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0f172a;
+            --bg-card: #1e293b;
+            --text-main: #f8fafc;
+            --accent: #ef4444;
+            --accent-blue: #3b82f6;
+            --border: #334155;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .screen {
+            display: none;
+            width: 100%;
+            max-width: 800px;
+            padding: 2rem;
+        }
+
+        .screen.active {
+            display: block;
+        }
+
+        /* YÜKLEME EKRANI */
+        .card {
+            background-color: var(--bg-card);
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            border: 1px solid var(--border);
+        }
+
+        h1, h2 {
+            margin-bottom: 1.5rem;
+            color: #f1f5f9;
+        }
+
+        .input-group {
+            margin-bottom: 1.5rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #94a3b8;
+        }
+
+        input[type="file"], textarea {
+            width: 100%;
+            padding: 0.75rem;
+            border-radius: 8px;
+            background: #0f172a;
+            border: 1px solid var(--border);
+            color: var(--text-main);
+        }
+
+        textarea {
+            height: 150px;
+            resize: vertical;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        button {
+            background-color: var(--accent-blue);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: opacity 0.2s;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        /* OKUMA EKRANI */
+        .reader-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 60vh;
+        }
+
+        .display-box {
+            width: 100%;
+            height: 200px;
+            background: #000;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3.5rem;
+            font-weight: bold;
+            position: relative;
+            border: 2px solid var(--border);
+            margin-bottom: 2rem;
+            letter-spacing: 2px;
+        }
+
+        .display-box::before, .display-box::after {
+            content: '';
+            position: absolute;
+            width: 2px;
+            height: 20px;
+            background-color: var(--accent);
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .display-box::before { top: 10px; }
+        .display-box::after { bottom: 10px; }
+
+        .orp-letter {
+            color: var(--accent);
+        }
+
+        .controls {
+            width: 100%;
+            background: var(--bg-card);
+            padding: 1.5rem;
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .preset-buttons {
+            display: flex;
+            gap: 0.5rem;
+            justify-content: center;
+        }
+
+        .preset-btn {
+            background: #334155;
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
+        }
+
+        .preset-btn.active {
+            background: var(--accent-blue);
+        }
+
+        .speed-slider-group {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .speed-slider-group input {
+            flex: 1;
+        }
+
+        .progress-bar-container {
+            width: 100%;
+            height: 8px;
+            background: #334155;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 1rem;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: var(--accent-blue);
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 1. ARAYÜZ: KAYNAK VE METİN EKLEME -->
+    <div id="setup-screen" class="screen active">
+        <div class="card">
+            <h1>Metin Kaynağı Seçimi</h1>
+            
+            <div class="input-group">
+                <label>Dosyadan İçe Aktar (.txt, .docx, .xlsx)</label>
+                <input type="file" id="file-input" accept=".txt, .docx, .xlsx">
+            </div>
+
+            <div class="input-group">
+                <label>Veya Metni Doğrudan Yapıştırın</label>
+                <textarea id="text-input" placeholder="Çalışmak istediğiniz metni buraya yapıştırın..."></textarea>
+            </div>
+
+            <div class="btn-group">
+                <button onclick="startReading()">Okuma Moduna Geç</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. ARAYÜZ: HIZLI OKUMA ÇALIŞMA ALANI -->
+    <div id="reader-screen" class="screen">
+        <div class="reader-container">
+            <div class="display-box" id="word-display">
+                <span>Hazır</span>
+            </div>
+
+            <div class="progress-bar-container">
+                <div class="progress-bar" id="progress-bar"></div>
+            </div>
+
+            <div class="controls" style="margin-top: 1rem;">
+                <div class="preset-buttons">
+                    <button class="preset-btn" onclick="setSpeedPreset(200, this)">Acemi (200 KDK)</button>
+                    <button class="preset-btn active" onclick="setSpeedPreset(400, this)">Orta (400 KDK)</button>
+                    <button class="preset-btn" onclick="setSpeedPreset(700, this)">Usta (700 KDK)</button>
+                </div>
+
+                <div class="speed-slider-group">
+                    <span>Hız:</span>
+                    <input type="range" id="speed-range" min="100" max="1200" step="25" value="400" oninput="updateSpeedFromSlider(this.value)">
+                    <span id="speed-label">400 KDK</span>
+                </div>
+
+                <div class="btn-group" style="justify-content: center;">
+                    <button id="play-btn" onclick="togglePlay()">Başlat</button>
+                    <button onclick="resetReader()" style="background-color: #64748b;">Durdur & Başa Dön</button>
+                    <button onclick="showSetup()" style="background-color: #475569;">Kaynak Değiştir</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let words = [];
+        let currentIndex = 0;
+        let isPlaying = false;
+        let intervalId = null;
+        let wpm = 400;
+
+        // Dosya Yükleme İşlemleri
+        document.getElementById('file-input').addEventListener('change', async function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const ext = file.name.split('.').pop().toLowerCase();
+
+            if (ext === 'txt') {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    document.getElementById('text-input').value = event.target.result;
+                };
+                reader.readAsText(file);
+            } else if (ext === 'docx') {
+                const arrayBuffer = await file.arrayBuffer();
+                mammoth.extractRawText({ arrayBuffer: arrayBuffer })
+                    .then(result => {
+                        document.getElementById('text-input').value = result.value;
+                    });
+            } else if (ext === 'xlsx') {
+                const data = await file.arrayBuffer();
+                const workbook = XLSX.read(data);
+                let extractedText = "";
+                
+                workbook.SheetNames.forEach(sheetName => {
+                    const sheet = workbook.Sheets[sheetName];
+                    const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+                    json.forEach(row => {
+                        if (row.length > 0) extractedText += row.join(" ") + "\n";
+                    });
+                });
+                document.getElementById('text-input').value = extractedText;
+            }
+        });
+
+        // Ekran Değişimi ve Başlatma
+        function startReading() {
+            const rawText = document.getElementById('text-input').value.trim();
+            if (!rawText) {
+                alert("Lütfen bir dosya yükleyin veya metin alanı doldurun.");
+                return;
+            }
+
+            // Metni kelimelere ayır (boşluklar ve satır başları dahil)
+            words = rawText.split(/\s+/).filter(w => w.length > 0);
+            currentIndex = 0;
+
+            document.getElementById('setup-screen').classList.remove('active');
+            document.getElementById('reader-screen').classList.add('active');
+            
+            updateDisplay();
+        }
+
+        function showSetup() {
+            pause();
+            document.getElementById('reader-screen').classList.remove('active');
+            document.getElementById('setup-screen').classList.add('active');
+        }
+
+        // ORP (Optimal Recognition Point) Vurgusu
+        function formatWord(word) {
+            const len = word.length;
+            let index = Math.floor((len - 1) / 3);
+            if (len <= 3) index = 0;
+
+            const left = word.substring(0, index);
+            const middle = word.substring(index, index + 1);
+            const right = word.substring(index + 1);
+
+            return `${left}<span class="orp-letter">${middle}</span>${right}`;
+        }
+
+        function updateDisplay() {
+            if (currentIndex < words.length) {
+                document.getElementById('word-display').innerHTML = formatWord(words[currentIndex]);
+                const progress = ((currentIndex + 1) / words.length) * 100;
+                document.getElementById('progress-bar').style.width = progress + "%";
+            } else {
+                pause();
+                document.getElementById('word-display').innerText = "Tamamlandı";
+            }
+        }
+
+        // Hız & Oynatma Kontrolleri
+        function togglePlay() {
+            if (isPlaying) {
+                pause();
+            } else {
+                play();
+            }
+        }
+
+        function play() {
+            if (currentIndex >= words.length) currentIndex = 0;
+            isPlaying = true;
+            document.getElementById('play-btn').innerText = "Duraklat";
+            
+            const delay = (60 / wpm) * 1000;
+            intervalId = setInterval(() => {
+                currentIndex++;
+                if (currentIndex < words.length) {
+                    updateDisplay();
+                } else {
+                    pause();
+                    document.getElementById('word-display').innerText = "Bitti";
+                }
+            }, delay);
+        }
+
+        function pause() {
+            isPlaying = false;
+            document.getElementById('play-btn').innerText = "Başlat";
+            if (intervalId) clearInterval(intervalId);
+        }
+
+        function resetReader() {
+            pause();
+            currentIndex = 0;
+            updateDisplay();
+        }
+
+        function setSpeedPreset(speed, element) {
+            wpm = speed;
+            document.getElementById('speed-range').value = speed;
+            document.getElementById('speed-label').innerText = speed + " KDK";
+            
+            document.querySelectorAll('.preset-btn').forEach(btn => btn.classList.remove('active'));
+            if(element) element.classList.add('active');
+
+            if (isPlaying) {
+                pause();
+                play();
+            }
+        }
+
+        function updateSpeedFromSlider(val) {
+            wpm = parseInt(val);
+            document.getElementById('speed-label').innerText = val + " KDK";
+            
+            document.querySelectorAll('.preset-btn').forEach(btn => btn.classList.remove('active'));
+
+            if (isPlaying) {
+                pause();
+                play();
+            }
+        }
+    </script>
+</body>
+</html>
