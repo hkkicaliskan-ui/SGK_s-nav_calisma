@@ -3,16 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hızlı Okuma Uygulaması v2 (Merkezi Vurgu)</title>
-    <!-- Word ve Excel dosyalarını okumak için kütüphaneler -->
+    <title>Hızlı Okuma Uygulaması v3.2</title>
+    <!-- Gerekli Kütüphaneler: Word, Excel ve PDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     <style>
         :root {
             --bg-primary: #0f172a;
             --bg-card: #1e293b;
             --text-main: #f8fafc;
-            --accent: #ff4757; /* Vurgu rengi daha belirgin yapıldı */
+            --accent: #ff4757;
             --accent-blue: #3b82f6;
             --border: #334155;
         }
@@ -21,7 +22,7 @@
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-            font-family: 'Courier New', Courier, monospace; /* Sabit genişlikli yazı tipi okuma için daha iyidir */
+            font-family: 'Courier New', Courier, monospace;
         }
 
         body {
@@ -87,6 +88,16 @@
             resize: vertical;
         }
 
+        .filter-info {
+            background: rgba(59, 130, 246, 0.1);
+            border-left: 4px solid var(--accent-blue);
+            padding: 0.75rem;
+            margin-bottom: 1.5rem;
+            font-size: 0.85rem;
+            color: #94a3b8;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
         .btn-group {
             display: flex;
             gap: 1rem;
@@ -118,7 +129,6 @@
             min-height: 60vh;
         }
 
-        /* Okuma Kutusu - Geliştirildi */
         .display-box {
             width: 100%;
             height: 180px;
@@ -126,10 +136,9 @@
             border-radius: 12px;
             display: flex;
             align-items: center;
-            /* Kelimelerin ekranda zıplamaması için sol hizalama ve padding kullanıyoruz */
-            justify-content: flex-start; 
-            padding-left: 10%; /* Başlangıç noktası */
-            font-size: 4rem; /* Daha büyük yazı */
+            justify-content: center; /* Tam Ortalandı */
+            text-align: center;
+            font-size: 4rem;
             font-weight: bold;
             position: relative;
             border: 2px solid var(--border);
@@ -138,23 +147,21 @@
             overflow: hidden;
         }
 
-        /* Sabit Dikey Vurgu Çizgileri */
         .display-box::before, .display-box::after {
             content: '';
             position: absolute;
             width: 3px;
-            height: 30px;
+            height: 25px;
             background-color: var(--accent);
             left: 50%;
             transform: translateX(-50%);
-            opacity: 0.5; /* Gözü yormaması için hafif şeffaf */
+            opacity: 0.6;
             z-index: 1;
         }
 
-        .display-box::before { top: 15px; }
-        .display-box::after { bottom: 15px; }
+        .display-box::before { top: 10px; }
+        .display-box::after { bottom: 10px; }
 
-        /* Vurgulu Harf Stili */
         .orp-letter {
             color: var(--accent);
             position: relative;
@@ -218,8 +225,7 @@
             width: 0%;
             transition: width 0.1s linear;
         }
-        
-        /* Metin okuma bittiğinde */
+
         .finished-msg {
             font-size: 2rem;
             color: #94a3b8;
@@ -235,8 +241,12 @@
             <h1>Metin Kaynağı Seçimi</h1>
             
             <div class="input-group">
-                <label>Dosyadan İçe Aktar (.txt, .docx, .xlsx)</label>
-                <input type="file" id="file-input" accept=".txt, .docx, .xlsx">
+                <label>Dosyadan İçe Aktar (.txt, .docx, .xlsx, .pdf)</label>
+                <input type="file" id="file-input" accept=".txt, .docx, .xlsx, .pdf">
+            </div>
+
+            <div class="filter-info">
+                ℹ️ <strong>Dipnot Filtresi Aktif:</strong> Sayfa altı açıklamaları, dipnotlar ve sayfa numaraları otomatik ayıklanır.
             </div>
 
             <div class="input-group">
@@ -253,7 +263,6 @@
     <!-- 2. ARAYÜZ: HIZLI OKUMA ÇALIŞMA ALANI -->
     <div id="reader-screen" class="screen">
         <div class="reader-container">
-            <!-- Kelimenin görüntülendiği kutu -->
             <div class="display-box" id="word-display-container">
                 <span id="word-display">Hazır</span>
             </div>
@@ -286,32 +295,91 @@
     </div>
 
     <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
         let words = [];
         let currentIndex = 0;
         let isPlaying = false;
         let intervalId = null;
         let wpm = 400;
 
-        // --- Dosya Yükleme İşlemleri (Değişmedi) ---
+        // --- Gelişmiş Metin Temizleme ve Dipnot Filtreleme ---
+        function filterFooterAndFootnotes(text) {
+            if (!text) return "";
+
+            let lines = text.split(/\r?\n/);
+            let cleanedLines = [];
+
+            for (let line of lines) {
+                let trimmed = line.trim();
+                if (!trimmed) continue;
+
+                if (/^(sayfa|page|s\.)\s*\d+/i.test(trimmed) || /^\d+\s*\/\s*\d+$/.test(trimmed)) {
+                    continue;
+                }
+                if (/^(\[\d+\]|\d+\.|\*|†|‡)\s+/.test(trimmed) && trimmed.length < 120) {
+                    continue;
+                }
+                if (/^(bkz|bakınız|kaynak|dipnot|not)\s*:/i.test(trimmed)) {
+                    continue;
+                }
+                if (/^(copyright|tüm hakları|all rights reserved)/i.test(trimmed)) {
+                    continue;
+                }
+
+                cleanedLines.push(trimmed);
+            }
+
+            return cleanedLines.join(" ");
+        }
+
+        // --- Dosya Okuma İşlemleri ---
         document.getElementById('file-input').addEventListener('change', async function(e) {
             const file = e.target.files[0];
             if (!file) return;
 
             const ext = file.name.split('.').pop().toLowerCase();
             const inputTextArea = document.getElementById('text-input');
-            inputTextArea.value = "Dosya yükleniyor, lütfen bekleyin...";
+            inputTextArea.value = "Dosya işleniyor...";
 
             try {
-                if (ext === 'txt') {
+                if (ext === 'pdf') {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                    let fullText = "";
+
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        const page = await pdf.getPage(i);
+                        const textContent = await page.getTextContent();
+                        const viewport = page.getViewport({ scale: 1.0 });
+                        
+                        let pageLines = [];
+                        textContent.items.forEach(item => {
+                            let yPosition = item.transform[5];
+                            let pageHeight = viewport.height;
+
+                            if (yPosition > (pageHeight * 0.15)) {
+                                pageLines.push(item.str);
+                            }
+                        });
+
+                        fullText += pageLines.join(" ") + "\n";
+                    }
+
+                    inputTextArea.value = filterFooterAndFootnotes(fullText);
+
+                } else if (ext === 'txt') {
                     const reader = new FileReader();
                     reader.onload = (event) => {
-                        inputTextArea.value = event.target.result;
+                        inputTextArea.value = filterFooterAndFootnotes(event.target.result);
                     };
                     reader.readAsText(file);
+
                 } else if (ext === 'docx') {
                     const arrayBuffer = await file.arrayBuffer();
                     const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
-                    inputTextArea.value = result.value;
+                    inputTextArea.value = filterFooterAndFootnotes(result.value);
+
                 } else if (ext === 'xlsx') {
                     const data = await file.arrayBuffer();
                     const workbook = XLSX.read(data);
@@ -324,23 +392,23 @@
                             if (row.length > 0) extractedText += row.join(" ") + "\n";
                         });
                     });
-                    inputTextArea.value = extractedText;
+                    inputTextArea.value = filterFooterAndFootnotes(extractedText);
                 }
             } catch (error) {
-                inputTextArea.value = "Dosya okunurken hata oluştu.";
+                inputTextArea.value = "Dosya işlenirken hata oluştu.";
                 console.error(error);
             }
         });
 
-        // --- Ekran Mantığı ---
+        // --- Okuma Mantığı ve Ekran Düzeni ---
         function startReading() {
-            const rawText = document.getElementById('text-input').value.trim();
-            if (!rawText || rawText === "Dosya yükleniyor, lütfen bekleyin...") {
+            let rawText = document.getElementById('text-input').value.trim();
+            if (!rawText || rawText.startsWith("Dosya işleniyor")) {
                 alert("Lütfen geçerli bir metin kaynağı sağlayın.");
                 return;
             }
 
-            // Metni temizle ve kelimelere ayır
+            rawText = filterFooterAndFootnotes(rawText);
             words = rawText.replace(/\s+/g, ' ').split(' ').filter(w => w.length > 0);
             currentIndex = 0;
 
@@ -357,87 +425,42 @@
             document.getElementById('setup-screen').classList.add('active');
         }
 
-        // --- !!! YENİ VURGU VE GÖRÜNTÜLEME MANTIĞI !!! ---
-
-        /**
-         * Kelimenin uzunluğuna göre kaç harfin vurgulanacağını belirler.
-         * Uzunluk < 5 -> 1 harf
-         * Uzunluk 5-8 -> 2 harf
-         * Uzunluk > 8 -> 3 harf
-         */
         function getEmphasisLength(wordLen) {
             if (wordLen < 5) return 1;
             if (wordLen < 9) return 2;
             return 3;
         }
 
-        /**
-         * Kelimeyi tam ortadan vurgulayacak şekilde HTML oluşturur.
-         */
         function formatWordCentered(word) {
             const len = word.length;
             if (len === 0) return "";
             
-            // Kaç harf vurgulanacak?
             const empLen = getEmphasisLength(len);
-            
-            // Vurgunun başlayacağı orta nokta hesaplaması
-            // (Kelime uzunluğu - vurgu uzunluğu) / 2 bize sol taraftaki normal harf sayısını verir.
             const startIndex = Math.floor((len - empLen) / 2);
             
             const leftPart = word.substring(0, startIndex);
             const middlePart = word.substring(startIndex, startIndex + empLen);
             const rightPart = word.substring(startIndex + empLen);
 
-            // CSS ile hizalamayı kolaylaştırmak için kelimeyi parçalara bölüyoruz
             return `<span>${leftPart}</span><span class="orp-letter">${middlePart}</span><span>${rightPart}</span>`;
         }
 
-        /**
-         * Ekranda kelimeyi günceller ve yatayda hizalar.
-         */
         function updateDisplay() {
             const displaySpan = document.getElementById('word-display');
-            const container = document.getElementById('word-display-container');
             
             if (currentIndex < words.length) {
                 const currentWord = words[currentIndex];
                 displaySpan.innerHTML = formatWordCentered(currentWord);
-                
-                // --- Dinamik Yatay Hizalama ---
-                // Vurgulanan harfin (orp-letter) kutunun tam ortasındaki 
-                // kırmızı çizgiye denk gelmesi için kelimeyi sola kaydırırız.
-                
-                const orpElement = displaySpan.querySelector('.orp-letter');
-                if (orpElement) {
-                    // Vurgulu harfin kelime içindeki sol pozisyonu
-                    const orpLeftWithinWord = orpElement.offsetLeft;
-                    // Vurgulu harfin kendi genişliğinin yarısı
-                    const orpHalfWidth = orpElement.offsetWidth / 2;
-                    
-                    // Konteynerin genişliğinin yarısı (hedef merkez)
-                    const containerHalfWidth = container.offsetWidth / 2;
 
-                    // Kelimenin başlangıç noktasının padding'ini hesapla.
-                    // padding-left = Merkez - (Kelime içindeki vurgu konumu + vurgunun yarısı)
-                    const targetPadding = containerHalfWidth - (orpLeftWithinWord + orpHalfWidth);
-                    
-                    // Padding'i uygula (minimum 5% padding bırakarak çok sola yapışmayı önle)
-                    container.style.paddingLeft = Math.max(container.offsetWidth * 0.05, targetPadding) + "px";
-                }
-
-                // İlerleme çubuğu
                 const progress = ((currentIndex + 1) / words.length) * 100;
                 document.getElementById('progress-bar').style.width = progress + "%";
             } else {
                 pause();
                 displaySpan.innerHTML = '<span class="finished-msg">Tamamlandı</span>';
-                container.style.paddingLeft = "0";
-                container.style.justifyContent = "center";
             }
         }
 
-        // --- Hız & Oynatma Kontrolleri (Hafif güncellendi) ---
+        // --- Kontrol Mekanizmaları ---
         function togglePlay() {
             if (isPlaying) pause(); else play();
         }
@@ -448,14 +471,13 @@
             
             isPlaying = true;
             document.getElementById('play-btn').innerText = "Duraklat";
-            document.getElementById('play-btn').style.backgroundColor = "#e17055"; // Turuncu duraklat
+            document.getElementById('play-btn').style.backgroundColor = "#e17055";
             
             runTimer();
         }
 
         function runTimer() {
             if (intervalId) clearInterval(intervalId);
-            
             const delay = (60 / wpm) * 1000;
             
             intervalId = setInterval(() => {
@@ -463,7 +485,7 @@
                 if (currentIndex < words.length) {
                     updateDisplay();
                 } else {
-                    updateDisplay(); // "Tamamlandı" mesajı için
+                    updateDisplay();
                 }
             }, delay);
         }
@@ -478,12 +500,9 @@
         function resetReader() {
             pause();
             currentIndex = 0;
-            const container = document.getElementById('word-display-container');
-            container.style.justifyContent = "flex-start";
             updateDisplay();
         }
 
-        // Hız Ayarları
         function setSpeedPreset(speed, element) {
             wpm = speed;
             document.getElementById('speed-range').value = speed;
@@ -492,21 +511,16 @@
             document.querySelectorAll('.preset-btn').forEach(btn => btn.classList.remove('active'));
             if(element) element.classList.add('active');
 
-            if (isPlaying) runTimer(); // Zamanlayıcıyı yeni hızla yeniden başlat
+            if (isPlaying) runTimer();
         }
 
         function updateSpeedFromSlider(val) {
             wpm = parseInt(val);
             document.getElementById('speed-label').innerText = val + " KDK";
-            
-            // Preset butonlarının aktifliğini kaldır
             document.querySelectorAll('.preset-btn').forEach(btn => btn.classList.remove('active'));
 
-            if (isPlaying) runTimer(); // Zamanlayıcıyı yeni hızla yeniden başlat
+            if (isPlaying) runTimer();
         }
-
-        // Pencere boyutu değiştiğinde hizalamayı koru
-        window.addEventListener('resize', updateDisplay);
     </script>
 </body>
 </html>
