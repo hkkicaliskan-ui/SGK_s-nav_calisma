@@ -1,0 +1,3 @@
+Eklenen kütüphane (Çalıştırmadan önce)
+
+pip install customtkinter pandas openpyxl PyPDF2 python-docx

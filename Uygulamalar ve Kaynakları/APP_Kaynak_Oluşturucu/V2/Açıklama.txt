@@ -1,0 +1,3 @@
+Eklenen Kütüphane
+
+pip install customtkinter pandas openpyxl PyPDF2 python-docx

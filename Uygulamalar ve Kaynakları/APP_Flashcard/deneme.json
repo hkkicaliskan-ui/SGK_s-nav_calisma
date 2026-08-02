@@ -1,0 +1,27 @@
+[
+    {
+        "question": "Emekli keseneği, kurum karşılığı, FHSZ, itibari hizmet süresi karşılıkları ve GSS primleri her bir sigortalı için ödeme kalemleri ayrı ayrı belirtilerek Kurum hesabına yatırıldı mı?",
+        "yes_output": null,
+        "no_output": "Ödemeler kurum hesabına yatırılmadan veya kalemler ayrı ayrı belirtilmeden işlem yapılamaz."
+    },
+    {
+        "question": "Ödemeye ait Banka Dekontu alındı mı?",
+        "yes_output": null,
+        "no_output": "Alınacak banka dekontu olmadan üst yazı ekine belge konulamaz."
+    },
+    {
+        "question": "İntibak seyrine göre kesenek/karşılık tutarları, GSS primleri, FHSZ ve itibari hizmet süresi hesaplamalarını gösterir listeler hazırlandı mı?",
+        "yes_output": null,
+        "no_output": "Hesaplamaları gösterir listeler eksik. Gönderim yapılamaz."
+    },
+    {
+        "question": "Sigortalıların Hizmet Belgesi dosyaya eklendi mi?",
+        "yes_output": null,
+        "no_output": "Hizmet belgesi eksik, süreç tamamlanamaz."
+    },
+    {
+        "question": "Tüm belgeler (Dekont, Hizmet Belgesi, Hesaplama Listeleri) bir üst yazı ekine koyuldu mu?",
+        "yes_output": "Evraklar üst yazı ekinde Kurumumuza gönderilmeye hazırdır.",
+        "no_output": "Belgelerin resmi bir üst yazı ekinde gönderilmesi zorunludur."
+    }
+]
